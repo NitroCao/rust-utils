@@ -1,0 +1,23 @@
+repos:
+- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+  rev: v2.8.0
+  hooks:
+  - id: pretty-format-rust
+    args:
+    - --autofix
+  - id: pretty-format-toml
+    args:
+    - --autofix
+  - id: pretty-format-yaml
+    args:
+    - --autofix
+    - --indent
+    - '2'
+
+- repo: https://github.com/compilerla/conventional-pre-commit
+  rev: v2.2.0
+  hooks:
+  - id: conventional-pre-commit
+    stages:
+    - commit-msg
+

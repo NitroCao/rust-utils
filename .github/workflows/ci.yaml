@@ -1,0 +1,29 @@
+name: CI Linter
+
+on:
+  pull_request_target:
+    types:
+    - opened
+    - edited
+    - synchronize
+
+jobs:
+  commit:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+    - uses: amannn/action-semantic-pull-request@v5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  code:
+    name: Check code style
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+      with:
+        components: rustfmt
+    - name: Rustfmt check
+      uses: actions-rust-lang/rustfmt@v1
+
