@@ -1,4 +1,9 @@
+[[bin]]
+name = "echo"
+path = "src/echo/main.rs"
+
 [dependencies]
+clap = {version = "4.2.5", features = ["derive"]}
 
 [package]
 edition = "2021"
