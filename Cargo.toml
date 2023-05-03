@@ -6,6 +6,10 @@ path = "src/echo/main.rs"
 name = "id"
 path = "src/id/main.rs"
 
+[[bin]]
+name = "cat"
+path = "src/cat/main.rs"
+
 [dependencies]
 clap = {version = "4.2.5", features = ["derive"]}
 libc = "0.2"
