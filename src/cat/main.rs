@@ -40,6 +40,10 @@ struct Args {
     /// equivalent to -vT
     show_noprinting_and_tabs: bool,
 
+    #[arg(short = 'A', default_value_t = false)]
+    /// equivalent to -vET
+    show_all: bool,
+
     files: Vec<String>,
 }
 
@@ -69,6 +73,11 @@ impl CatCmd {
         if args.show_noprinting_and_tabs {
             args.show_nonprinting = true;
             args.show_tabs = true;
+        }
+        if args.show_all {
+            args.show_nonprinting = true;
+            args.show_tabs = true;
+            args.show_ends = true;
         }
     }
 
