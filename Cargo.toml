@@ -10,8 +10,13 @@ path = "src/id/main.rs"
 name = "cat"
 path = "src/cat/main.rs"
 
+[[bin]]
+name = "inotifywait"
+path = "src/inotifywait/main.rs"
+
 [dependencies]
 clap = {version = "4.2.5", features = ["derive"]}
+inotify = "0.10"
 libc = "0.2"
 
 [package]
