@@ -1,7 +1,7 @@
-use std::{collections::HashMap, process};
+use std::{collections::HashMap, fs, process};
 
 use clap::{ArgAction, Parser};
-use inotify::{Inotify, WatchMask};
+use inotify::{Inotify, WatchDescriptor, WatchMask};
 
 #[derive(Parser, Debug)]
 #[command(name = "inotifywait", author, about)]
@@ -15,65 +15,149 @@ struct Args {
     /// Without this option, inotifywait will exit after one event is received.
     monitor: bool,
 
+    #[arg(short, long, default_value_t = false)]
+    /// Watch directories recursively.
+    recursive: bool,
+
     files: Vec<String>,
 }
 
 struct InotifywaitCmd {
     arg: Args,
+    wd_map: HashMap<WatchDescriptor, String>,
+    inotify: Option<Inotify>,
 }
 
 impl InotifywaitCmd {
     fn new(arg: Args) -> InotifywaitCmd {
-        InotifywaitCmd { arg }
+        InotifywaitCmd {
+            arg,
+            wd_map: HashMap::new(),
+            inotify: None,
+        }
     }
 
-    fn run(&self) {
+    fn add_watch(&mut self, filename: String, flags: WatchMask) {
+        let metadata = match fs::metadata(&filename) {
+            Ok(data) => data,
+            Err(err) => {
+                println!(
+                    "error when getting metadata of {}: {}",
+                    &filename,
+                    err.to_string()
+                );
+                return;
+            }
+        };
+        if metadata.is_dir() {
+            let dir_iter = match fs::read_dir(&filename) {
+                Ok(iter) => iter,
+                Err(err) => {
+                    println!(
+                        "error when reading directory {}: {}",
+                        filename,
+                        err.to_string()
+                    );
+                    process::exit(1);
+                }
+            };
+
+            let iter = dir_iter.filter(|path| match path {
+                Ok(entry) => match entry.file_type() {
+                    Ok(file_type) => file_type.is_dir(),
+                    Err(err) => {
+                        println!(
+                            "error when getting metadata of {}: {}",
+                            entry.file_name().as_os_str().to_str().unwrap_or(""),
+                            err.to_string()
+                        );
+                        process::exit(1);
+                    }
+                },
+                Err(err) => {
+                    println!(
+                        "error when reading directory {}: {}",
+                        filename,
+                        err.to_string()
+                    );
+                    process::exit(1);
+                }
+            });
+            for entry in iter {
+                match entry {
+                    Ok(dir_entry) => {
+                        let new_filename = dir_entry.path().to_string_lossy().to_string();
+                        self.add_watch(new_filename, flags);
+                    }
+                    Err(err) => {
+                        println!(
+                            "error when reading directory {}: {}",
+                            filename,
+                            err.to_string()
+                        );
+                        process::exit(1);
+                    }
+                }
+            }
+        }
+        self.wd_map.insert(
+            match self
+                .inotify
+                .as_mut()
+                .expect("unexpected null inotify instance")
+                .add_watch(&filename, flags)
+            {
+                Ok(wd) => wd,
+                Err(err) => {
+                    println!(
+                        "failed to add inotify watch for {}: {}",
+                        filename,
+                        err.to_string()
+                    );
+                    return;
+                }
+            },
+            filename,
+        );
+    }
+
+    fn run(&mut self) {
         let flags = self.setup_flags();
 
-        let mut inotify = Inotify::init().unwrap_or_else(|err| {
-            println!("failed to initialize inotify: {}", err.to_string());
-            process::exit(1);
-        });
-
         println!("Setting up watches.");
-        let args = &self.arg;
-        if args.files.len() == 0 {
+        if self.arg.files.len() == 0 {
             println!("No files specified to watch!");
             return;
         }
-        let mut wd_map = HashMap::with_capacity(args.files.len());
-        for filename in &args.files {
-            wd_map.insert(
-                match inotify.add_watch(&filename, flags) {
-                    Ok(wd) => wd,
-                    Err(err) => {
-                        println!(
-                            "failed to add inotify watch for {}: {}",
-                            &filename,
-                            err.to_string()
-                        );
-                        continue;
-                    }
-                },
-                filename,
-            );
+
+        self.inotify = Some(Inotify::init().unwrap_or_else(|err| {
+            println!("failed to initialize inotify: {}", err.to_string());
+            process::exit(1);
+        }));
+
+        for i in 0..self.arg.files.len() {
+            let filename = self.arg.files.remove(i);
+            self.add_watch(filename, flags);
         }
         println!("Watches established.");
 
         let mut buff = [0u8; 4096];
         'outer: loop {
-            let events = inotify
+            let events = self
+                .inotify
+                .as_mut()
+                .expect("unexpected null inotify instance")
                 .read_events_blocking(&mut buff)
                 .expect("failed to read inotify event");
             for event in events {
                 let filename = event.name.map_or("", |n| n.to_str().map_or("", |n| n));
                 println!(
                     "{}\t{:?} {}",
-                    wd_map.get(&event.wd).map_or("", |path| path),
+                    self.wd_map.get(&event.wd).map_or("", |path| path),
                     event.mask,
                     filename
                 );
-                if !args.monitor {
+                if !self.arg.monitor {
                     break 'outer;
                 }
             }
@@ -129,6 +213,6 @@ impl InotifywaitCmd {
 
 fn main() {
     let args = Args::parse();
-    let cmd = InotifywaitCmd::new(args);
+    let mut cmd = InotifywaitCmd::new(args);
     cmd.run();
 }
